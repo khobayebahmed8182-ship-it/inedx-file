@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Private Cloud</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #1e3a5f; --navy-light: #2a4a72; --gray-bg: #f5f7fa;
+    --gray-card: #ffffff; --gray-border: #e2e8f0; --gray-text: #64748b;
+    --text: #1e293b; --danger: #dc2626; --success: #16a34a;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--gray-bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+  button { font-family: inherit; cursor: pointer; border: none; font-size: 14px; }
+  input, select { font-family: inherit; font-size: 14px; width: 100%; padding: 10px 12px; border: 1px solid var(--gray-border); border-radius: 8px; outline: none; transition: 0.15s; }
+  input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(30,58,95,0.1); }
+
+  .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .auth-card { background: white; padding: 32px; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); width: 100%; max-width: 400px; }
+  .auth-card h1 { font-size: 22px; color: var(--navy); margin-bottom: 4px; font-weight: 600; }
+  .auth-card p.sub { color: var(--gray-text); font-size: 13px; margin-bottom: 24px; }
+  .auth-card input { margin-bottom: 12px; }
+  .btn { width: 100%; padding: 11px; background: var(--navy); color: white; border-radius: 8px; font-weight: 500; transition: 0.15s; }
+  .btn:hover { background: var(--navy-light); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-link { background: none; color: var(--navy); text-decoration: underline; padding: 0; font-size: 13px; }
+  .auth-links { margin-top: 20px; text-align: center; font-size: 13px; color: var(--gray-text); }
+  .auth-links .btn-link { margin: 0 4px; }
+  .error { color: var(--danger); font-size: 13px; margin-bottom: 10px; padding: 8px 10px; background: #fef2f2; border-radius: 6px; display: none; }
+  .error.show { display: block; }
+  .success { color: var(--success); font-size: 13px; padding: 8px 10px; background: #f0fdf4; border-radius: 6px; margin-bottom: 10px; display: none; }
+  .success.show { display: block; }
+
+  #app { display: none; min-height: 100vh; }
+  #app.active { display: flex; }
+  .sidebar { width: 240px; background: white; border-right: 1px solid var(--gray-border); display: flex; flex-direction: column; }
+  .sidebar .brand { padding: 20px 18px; border-bottom: 1px solid var(--gray-border); }
+  .sidebar .brand h1 { color: var(--navy); font-size: 15px; font-weight: 600; }
+  .sidebar .brand small { display: block; color: var(--gray-text); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar nav { flex: 1; padding: 12px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: #334155; font-size: 14px; text-decoration: none; margin-bottom: 2px; transition: 0.15s; cursor: pointer; }
+  .nav-item:hover { background: #f1f5f9; }
+  .nav-item.active { background: var(--navy); color: white; }
+  .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .sidebar .footer { padding: 12px; border-top: 1px solid var(--gray-border); }
+
+  .main { flex: 1; padding: 24px 32px; overflow-y: auto; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 12px; flex-wrap: wrap; }
+  .topbar h2 { font-size: 20px; font-weight: 600; color: var(--text); }
+  .topbar .actions { display: flex; gap: 8px; }
+  .btn-primary { background: var(--navy); color: white; padding: 9px 16px; border-radius: 8px; font-weight: 500; }
+  .btn-primary:hover { background: var(--navy-light); }
+  .btn-secondary { background: white; color: var(--text); padding: 9px 16px; border-radius: 8px; border: 1px solid var(--gray-border); }
+  .btn-secondary:hover { background: #f8fafc; }
+  .btn-danger { background: var(--danger); color: white; padding: 8px 14px; border-radius: 8px; }
+  .btn-sm { padding: 6px 10px; font-size: 12px; }
+
+  .card { background: var(--gray-card); border: 1px solid var(--gray-border); border-radius: 12px; padding: 18px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card .label { color: var(--gray-text); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+  .stat-card .value { font-size: 22px; font-weight: 600; color: var(--text); }
+  .storage-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .storage-bar-fill { height: 100%; background: var(--navy); transition: width 0.4s; }
+
+  .files-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+  .search-input { max-width: 300px; flex: 1; }
+  .view-toggle { display: flex; gap: 4px; background: #e2e8f0; padding: 3px; border-radius: 8px; }
+  .view-toggle button { padding: 5px 10px; font-size: 12px; background: transparent; border-radius: 6px; color: var(--gray-text); }
+  .view-toggle button.active { background: white; color: var(--navy); font-weight: 500; }
+
+  .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .file-card { background: white; border: 1px solid var(--gray-border); border-radius: 10px; padding: 14px; transition: 0.15s; cursor: pointer; position: relative; }
+  .file-card:hover { border-color: var(--navy); box-shadow: 0 2px 8px rgba(30,58,95,0.08); }
+  .file-card .icon { width: 100%; height: 80px; display: flex; align-items: center; justify-content: center; background: #f1f5f9; border-radius: 8px; margin-bottom: 10px; font-size: 32px; }
+  .file-card .name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+  .file-card .meta { font-size: 11px; color: var(--gray-text); }
+  .file-card .actions { position: absolute; top: 8px; right: 8px; display: none; gap: 4px; background: white; padding: 4px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .file-card:hover .actions { display: flex; }
+  .action-btn { width: 26px; height: 26px; border-radius: 5px; display: flex; align-items: center; justify-content: center; background: #f1f5f9; color: var(--text); }
+  .action-btn:hover { background: var(--navy); color: white; }
+  .action-btn.danger:hover { background: var(--danger); }
+  .action-btn svg { width: 14px; height: 14px; }
+
+  .files-list { background: white; border: 1px solid var(--gray-border); border-radius: 10px; overflow: hidden; }
+  .files-list-row { display: grid; grid-template-columns: 1fr 100px 100px 100px auto; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--gray-border); align-items: center; font-size: 13px; transition: 0.15s; }
+  .files-list-row:last-child { border-bottom: none; }
+  .files-list-row:hover { background: #f8fafc; }
+  .files-list-row.header { background: #f8fafc; font-weight: 500; color: var(--gray-text); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .files-list-row .name { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+  .files-list-row .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files-list-row .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--gray-text); }
+  .empty svg { width: 40px; height: 40px; margin-bottom: 12px; opacity: 0.5; }
+  .empty h3 { font-size: 15px; color: var(--text); margin-bottom: 4px; }
+  .empty p { font-size: 13px; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 100; }
+  .modal-backdrop.show { display: flex; }
+  .modal { background: white; border-radius: 14px; padding: 24px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .modal h3 { font-size: 17px; margin-bottom: 16px; }
+  .modal .field { margin-bottom: 14px; }
+  .modal .field label { display: block; font-size: 12px; color: var(--gray-text); margin-bottom: 5px; font-weight: 500; }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+
+  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+  .toast { background: white; padding: 12px 16px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-left: 3px solid var(--navy); font-size: 13px; min-width: 240px; animation: slideIn 0.2s; }
+  .toast.success { border-left-color: var(--success); }
+  .toast.error { border-left-color: var(--danger); }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  .upload-progress { background: white; border: 1px solid var(--gray-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .upload-progress .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  .upload-progress .bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+  .upload-progress .bar-fill { height: 100%; background: var(--navy); transition: width 0.2s; }
+
+  .mobile-nav { display: none; background: white; border-bottom: 1px solid var(--gray-border); overflow-x: auto; padding: 8px; }
+  .mobile-nav .nav-item { flex-direction: column; min-width: 60px; padding: 6px 8px; font-size: 11px; text-align: center; gap: 4px; }
+
+  @media (max-width: 768px) {
+    #app.active { flex-direction: column; }
+    .sidebar { display: none; }
+    .mobile-nav { display: flex; gap: 4px; }
+    .main { padding: 16px; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .files-list-row { grid-template-columns: 1fr auto; }
+    .files-list-row > *:not(.name):not(.row-actions) { display: none; }
+    .files-list-row.header { display: none; }
+    .files-list-row .row-actions { display: flex; }
+    .files-list-row .row-actions .action-btn { display: flex; }
+  }
+  @media (max-width: 480px) {
+    .files-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .stats-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="auth" class="auth-wrap">
+  <div class="auth-card" id="login-screen">
+    <h1>My Private Cloud</h1>
+    <p class="sub">Sign in to your private vault</p>
+    <div class="error" id="login-error"></div>
+    <input type="email" id="login-email" placeholder="Email" autocomplete="email" />
+    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
+    <button class="btn" id="btn-login">Sign In</button>
+    <div class="auth-links">
+      <button class="btn-link" id="link-reset">Forgot password?</button>
+      ·
+      <button class="btn-link" id="link-register">Owner registration</button>
+    </div>
+  </div>
+
+  <div class="auth-card" id="register-screen" style="display:none">
+    <h1>Owner Registration</h1>
+    <p class="sub">Create your single owner account</p>
+    <div class="error" id="register-error"></div>
+    <div class="success" id="register-success"></div>
+    <input type="email" id="register-email" placeholder="Email (must match OWNER_EMAIL)" />
+    <input type="password" id="register-password" placeholder="Password (min 6 chars)" />
+    <button class="btn" id="btn-register">Create Owner Account</button>
+    <div class="auth-links">
+      <button class="btn-link" id="link-back-login">Back to sign in</button>
+    </div>
+  </div>
+
+  <div class="auth-card" id="reset-screen" style="display:none">
+    <h1>Reset Password</h1>
+    <p class="sub">We'll email you a reset link</p>
+    <div class="error" id="reset-error"></div>
+    <div class="success" id="reset-success">Check your email for a reset link.</div>
+    <input type="email" id="reset-email" placeholder="Email" />
+    <button class="btn" id="btn-reset">Send Reset Link</button>
+    <div class="auth-links">
+      <button class="btn-link" id="link-back-login2">Back to sign in</button>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>My Private Cloud</h1>
+      <small id="user-email">—</small>
+    </div>
+    <nav id="nav-desktop"></nav>
+    <div class="footer">
+      <button class="btn-secondary" style="width:100%" id="btn-logout">Sign out</button>
+    </div>
+  </aside>
+  <div style="flex:1; display:flex; flex-direction:column; overflow:hidden">
+    <div class="mobile-nav" id="nav-mobile"></div>
+    <main class="main" id="main-content"></main>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+<div class="modal-backdrop" id="modal" onclick="if(event.target===this)window.closeModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+  // 1. Supabase Setup
+  const SUPABASE_URL = "https://sjcmsyyssjdpqopjwlen.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqY21zeXlzc2pkcHFvcGp3bGVuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNzE5OTgsImV4cCI6MjEwODY0Nzk5OH0.ks6ox5bc52TodhEyAH93M2O1RVyl6IAJ-hQbriC7Go8"; 
+  const OWNER_EMAIL = "khobayebahmed8182@gmail.com";
+  const STORAGE_QUOTA = 10 * 1024 * 1024 * 1024; // 10 GB
+
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  let currentUser = null;
+  let currentView = 'dashboard';
+  let allFiles = [];
+  let fileView = 'grid';
+  let searchQuery = '';
+
+  const icons = {
+    dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>',
+    files: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>',
+    storage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="9" ry="3"/><path d="M3 6v6c0 1.66 4 3 9 3s9-1.34 9-3V6"/><path d="M3 12v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg>',
+    shares: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51L8.59 10.49"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+    settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>',
+    trashSmall: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+    share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51L8.59 10.49"/></svg>',
+    upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>',
+    image: '🖼️', video: '🎬', audio: '🎵', document: '📄', archive: '📦', other: '📎',
+  };
+
+  function fmtSize(b) { if (!b) return '0 B'; const k = 1024, s = ['B', 'KB', 'MB', 'GB', 'TB']; const i = Math.floor(Math.log(b) / Math.log(k)); return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + s[i]; }
+  function fmtDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+  function fileCategory(m) { if (!m) return 'other'; if (m.startsWith('image/')) return 'image'; if (m.startsWith('video/')) return 'video'; if (m.startsWith('audio/')) return 'audio'; if (m.includes('zip') || m.includes('rar') || m.includes('7z') || m.includes('tar')) return 'archive'; if (m === 'application/pdf' || m.includes('word') || m.includes('excel') || m.includes('powerpoint') || m.startsWith('text/')) return 'document'; return 'other'; }
+  function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function toast(msg, type = 'info') { const t = document.createElement('div'); t.className = 'toast ' + type; t.textContent = msg; document.getElementById('toasts').appendChild(t); setTimeout(() => t.remove(), 3500); }
+  function showErr(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.classList.add('show'); }
+  function clearErr(id) { document.getElementById(id).classList.remove('show'); }
+  
+  function showScreen(name) {
+    ['login', 'register', 'reset'].forEach(s => { document.getElementById(s + '-screen').style.display = s === name ? 'block' : 'none'; });
+    clearErr('login-error'); clearErr('register-error'); clearErr('reset-error');
+  }
+
+  // BINDING EVENTS (Click Handlers)
+  document.getElementById('link-register').addEventListener('click', () => showScreen('register'));
+  document.getElementById('link-reset').addEventListener('click', () => showScreen('reset'));
+  document.getElementById('link-back-login').addEventListener('click', () => showScreen('login'));
+  document.getElementById('link-back-login2').addEventListener('click', () => showScreen('login'));
+  document.getElementById('btn-logout').addEventListener('click', () => doLogout());
+  document.getElementById('btn-login').addEventListener('click', () => doLogin());
+  document.getElementById('btn-register').addEventListener('click', () => doRegister());
+  document.getElementById('btn-reset').addEventListener('click', () => doReset());
+
+  async function doLogin() {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    if (!email || !password) return showErr('login-error', 'Enter email and password');
+    clearErr('login-error');
+    
+    const btn = document.getElementById('btn-login');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      btn.disabled = false; btn.textContent = 'Sign In';
+      
+      if (error) throw error;
+      if (!data.user) throw new Error("Invalid credentials");
+      
+      currentUser = data.user;
+      enterApp();
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Sign In';
+      showErr('login-error', err.message || 'Login failed.');
+    }
+  }
+
+  async function doRegister() {
+    const email = document.getElementById('register-email').value.trim();
+    const password = document.getElementById('register-password').value;
+    if (!email || password.length < 6) return showErr('register-error', 'Email required, password min 6 chars.');
+    clearErr('register-error');
+    if (SUPABASE_ANON_KEY === '******') {
+      return showErr('register-error', 'Supabase is not configured. Add your project anon/publishable key to SUPABASE_ANON_KEY.');
+    }
+    if (email.toLowerCase() !== OWNER_EMAIL.trim().toLowerCase()) {
+      return showErr('register-error', 'Only the OWNER_EMAIL in config can register.');
+    }
+
+    const btn = document.getElementById('btn-register');
+    btn.disabled = true; btn.textContent = 'Creating…';
+    
+    try {
+      const { data, error } = await supabaseClient.auth.signUp({ email, password });
+      btn.disabled = false; btn.textContent = 'Create Owner Account';
+      
+      if (error) throw error;
+      
+      const successEl = document.getElementById('register-success');
+      successEl.classList.add('show');
+      successEl.textContent = 'Account created! Please sign in now.';
+      toast('Account created successfully!', 'success');
+      
+      setTimeout(() => {
+        document.getElementById('login-email').value = email;
+        showScreen('login');
+      }, 2000);
+      
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Create Owner Account';
+      showErr('register-error', err.message || 'Registration failed.');
+    }
+  }
+
+  async function doReset() {
+    const email = document.getElementById('reset-email').value.trim();
+    if (!email) return showErr('reset-error', 'Enter your email');
+    clearErr('reset-error');
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+    if (error) return showErr('reset-error', error.message);
+    document.getElementById('reset-success').classList.add('show');
+  }
+
+  async function doLogout() {
+    await supabaseClient.auth.signOut();
+    currentUser = null;
+    document.getElementById('app').classList.remove('active');
+    document.getElementById('auth').style.display = 'flex';
+    showScreen('login');
+  }
+
+  const VIEWS = [
+    { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+    { key: 'files', label: 'My Files', icon: 'files' },
+    { key: 'storage', label: 'Storage', icon: 'storage' },
+    { key: 'shares', label: 'Shares', icon: 'shares' },
+    { key: 'trash', label: 'Trash', icon: 'trash' },
+    { key: 'settings', label: 'Settings', icon: 'settings' },
+  ];
+
+  function renderNav() {
+    const html = VIEWS.map(v => `<a class="nav-item ${v.key === currentView ? 'active' : ''}" onclick="switchView('${v.key}')">${icons[v.icon]} <span>${v.label}</span></a>`).join('');
+    document.getElementById('nav-desktop').innerHTML = html;
+    document.getElementById('nav-mobile').innerHTML = html;
+  }
+
+  function enterApp() {
+    document.getElementById('auth').style.display = 'none';
+    document.getElementById('app').classList.add('active');
+    document.getElementById('user-email').textContent = currentUser.email;
+    switchView('dashboard');
+  }
+
+  function switchView(view) {
+    currentView = view;
+    renderNav();
+    if (view === 'dashboard') return renderDashboard();
+    if (view === 'files') return renderFiles();
+    if (view === 'storage') return renderStorage();
+    if (view === 'shares') return renderShares();
+    if (view === 'trash') return renderTrash();
+    if (view === 'settings') return renderSettings();
+  }
+  
+  window.switchView = switchView;
+
+  async function loadFiles(trashed = false) {
+    const { data, error } = await supabaseClient.from('files').select('*').eq('owner_id', currentUser.id).eq('is_trashed', trashed).order('uploaded_at', { ascending: false });
+    if (error) { toast(error.message, 'error'); return []; }
+    return data || [];
+  }
+
+  async function totalUsed() {
+    const { data } = await supabaseClient.from('files').select('size_bytes').eq('owner_id', currentUser.id).eq('is_trashed', false);
+    return (data || []).reduce((s, f) => s + Number(f.size_bytes || 0), 0);
+  }
+
+  async function renderDashboard() {
+    const files = await loadFiles();
+    const used = files.reduce((s, f) => s + Number(f.size_bytes || 0), 0);
+    const avail = Math.max(0, STORAGE_QUOTA - used);
+    const pct = Math.min(100, (used / STORAGE_QUOTA) * 100);
+    const recent = files.slice(0, 6);
+
+    document.getElementById('main-content').innerHTML = `
+      <div class="topbar"><h2>Welcome back 👋</h2><div class="actions"><button class="btn-primary" onclick="openUpload()">${icons.upload} Upload New File</button></div></div>
+      <div class="stats-grid">
+        <div class="card stat-card"><div class="label">Total Files</div><div class="value">${files.length}</div></div>
+        <div class="card stat-card"><div class="label">Storage Used</div><div class="value">${fmtSize(used)}</div></div>
+        <div class="card stat-card"><div class="label">Available</div><div class="value">${fmtSize(avail)}</div></div>
+        <div class="card stat-card"><div class="label">Usage</div><div class="value">${pct.toFixed(1)}%</div><div class="storage-bar"><div class="storage-bar-fill" style="width:${pct}%"></div></div></div>
+      </div>
+      <div class="card" style="margin-bottom:24px">
+        <h3 style="font-size:15px; margin-bottom:14px">Recent Uploads</h3>
+        ${recent.length === 0 ? `<div class="empty">${icons.files}<h3>No files yet</h3><p>Click "Upload New File" to get started</p></div>` : `<div class="files-grid">${recent.map(f => fileCardHtml(f)).join('')}</div>`}
+      </div>
+    `;
+  }
+
+  function fileCardHtml(f) {
+    const cat = fileCategory(f.mime_type);
+    return `
+      <div class="file-card" onclick="previewFile('${f.id}')">
+        <div class="actions">
+          <button class="action-btn" onclick="event.stopPropagation();downloadFile('${f.id}')" title="Download">${icons.download}</button>
+          <button class="action-btn" onclick="event.stopPropagation();openShareDialog('${f.id}')" title="Share">${icons.share}</button>
+          <button class="action-btn danger" onclick="event.stopPropagation();confirmDelete('${f.id}')" title="Delete">${icons.trashSmall}</button>
+        </div>
+        <div class="icon">${icons[cat]}</div>
+        <div class="name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+        <div class="meta">${fmtSize(f.size_bytes)} · ${fmtDate(f.uploaded_at)}</div>
+      </div>
+    `;
+  }
+
+  async function renderFiles() {
+    allFiles = await loadFiles(false);
+    drawFiles();
+  }
+
+  function drawFiles() {
+    let list = allFiles;
+    if (searchQuery) { const q = searchQuery.toLowerCase(); list = list.filter(f => f.name.toLowerCase().includes(q)); }
+    const content = `
+      <div class="topbar"><h2>My Files</h2><div class="actions"><button class="btn-primary" onclick="openUpload()">${icons.upload} Upload</button></div></div>
+      <div class="files-header">
+        <input class="search-input" placeholder="Search files…" value="${escapeHtml(searchQuery)}" oninput="onSearch(this.value)" />
+        <div class="view-toggle">
+          <button class="${fileView==='grid'?'active':''}" onclick="setFileView('grid')">Grid</button>
+          <button class="${fileView==='list'?'active':''}" onclick="setFileView('list')">List</button>
+        </div>
+      </div>
+      ${list.length === 0 ? `<div class="empty">${icons.files}<h3>No files found</h3><p>${searchQuery ? 'Try a different search' : 'Upload your first file'}</p></div>` : 
+        fileView === 'grid' ? `<div class="files-grid">${list.map(f => fileCardHtml(f)).join('')}</div>` : `
+        <div class="files-list">
+          <div class="files-list-row header"><div>Name</div><div>Type</div><div>Size</div><div>Uploaded</div><div></div></div>
+          ${list.map(f => `
+            <div class="files-list-row">
+              <div class="name"><span style="font-size:16px">${icons[fileCategory(f.mime_type)]}</span><span title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span></div>
+              <div>${fileCategory(f.mime_type)}</div><div>${fmtSize(f.size_bytes)}</div><div>${fmtDate(f.uploaded_at)}</div>
+              <div class="row-actions">
+                <button class="action-btn" onclick="downloadFile('${f.id}')" title="Download">${icons.download}</button>
+                <button class="action-btn" onclick="openShareDialog('${f.id}')" title="Share">${icons.share}</button>
+                <button class="action-btn danger" onclick="confirmDelete('${f.id}')" title="Delete">${icons.trashSmall}</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    `;
+    document.getElementById('main-content').innerHTML = content;
+  }
+
+  window.onSearch = function(v) { searchQuery = v; drawFiles(); }
+  window.setFileView = function(v) { fileView = v; drawFiles(); }
+
+  window.openUpload = function() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.multiple = true;
+    input.onchange = () => uploadFiles(Array.from(input.files));
+    input.click();
+  }
+
+  async function uploadFiles(files) {
+    if (!files.length) return;
+    for (const file of files) { await uploadOne(file); }
+    switchView('files');
+  }
+
+  async function uploadOne(file) {
+    const progress = document.createElement('div');
+    progress.className = 'upload-progress';
+    progress.innerHTML = `<div class="head"><span>${escapeHtml(file.name)}</span><span class="pct">0%</span></div><div class="bar"><div class="bar-fill" style="width:0%"></div></div>`;
+    document.getElementById('main-content').prepend(progress);
+    const pctEl = progress.querySelector('.pct');
+    const fillEl = progress.querySelector('.bar-fill');
+
+    try {
+      if (file.size > 100 * 1024 * 1024) throw new Error('File too large (max 100 MB)');
+      const used = await totalUsed();
+      if (used + file.size > STORAGE_QUOTA) throw new Error('Storage quota exceeded');
+      
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${currentUser.id}/${Date.now()}-${safe}`;
+
+      fillEl.style.width = '40%'; pctEl.textContent = '40%';
+      const { error: upErr } = await supabaseClient.storage.from('private-files').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+      if (upErr) throw upErr;
+
+      fillEl.style.width = '80%'; pctEl.textContent = '80%';
+      const { error: dbErr } = await supabaseClient.from('files').insert({
+        owner_id: currentUser.id, name: file.name, storage_path: path,
+        mime_type: file.type || 'application/octet-stream', size_bytes: file.size,
+      });
+      if (dbErr) throw dbErr;
+
+      fillEl.style.width = '100%'; pctEl.textContent = '100%';
+      toast(`Uploaded ${file.name}`, 'success');
+      setTimeout(() => progress.remove(), 800);
+    } catch (err) {
+      toast(err.message || 'Upload failed', 'error');
+      progress.remove();
+    }
+  }
+
+  window.downloadFile = async function(fileId) {
+    const file = allFiles.find(f => f.id === fileId) || (await supabaseClient.from('files').select('*').eq('id', fileId).single()).data;
+    if (!file) return toast('File not found', 'error');
+    const { data, error } = await supabaseClient.storage.from('private-files').createSignedUrl(file.storage_path, 60);
+    if (error) return toast(error.message, 'error');
+    const a = document.createElement('a'); a.href = data.signedUrl; a.download = file.name; a.click();
+    await supabaseClient.from('files').update({ last_accessed_at: new Date().toISOString() }).eq('id', fileId);
+  }
+
+  window.previewFile = async function(fileId) {
+    const file = allFiles.find(f => f.id === fileId);
+    if (!file) return;
+    const cat = fileCategory(file.mime_type);
+    if (!['image', 'video', 'audio', 'document'].includes(cat)) return downloadFile(fileId);
+    if (file.mime_type === 'application/pdf') return downloadFile(fileId);
+    
+    const { data, error } = await supabaseClient.storage.from('private-files').createSignedUrl(file.storage_path, 300);
+    if (error) return toast(error.message, 'error');
+
+    const url = data.signedUrl;
+    let body = '';
+    if (cat === 'image') body = `<img src="${url}" style="width:100%;border-radius:8px">`;
+    else if (cat === 'video') body = `<video src="${url}" controls style="width:100%;border-radius:8px"></video>`;
+    else if (cat === 'audio') body = `<audio src="${url}" controls style="width:100%"></audio>`;
+    else body = `<p style="color:var(--gray-text)">Preview not available. <a href="${url}" target="_blank">Open in new tab</a></p>`;
+
+    openModal(`<h3>${escapeHtml(file.name)}</h3><div style="margin:14px 0">${body}</div><div class="actions"><button class="btn-secondary" onclick="downloadFile('${fileId}');closeModal()">Download</button><button class="btn-secondary" onclick="closeModal()">Close</button></div>`);
+  }
+
+  window.confirmDelete = function(fileId) {
+    const file = allFiles.find(f => f.id === fileId);
+    openModal(`<h3>Move to trash?</h3><p style="color:var(--gray-text);font-size:13px;margin-bottom:14px">"${escapeHtml(file?.name || 'file')}" will be moved to trash. Any share links will be revoked.</p><div class="actions"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-danger" onclick="trashFile('${fileId}')">Move to Trash</button></div>`);
+  }
+
+  window.trashFile = async function(fileId) {
+    await supabaseClient.from('files').update({ is_trashed: true }).eq('id', fileId);
+    await supabaseClient.from('share_links').update({ revoked: true }).eq('file_id', fileId);
+    closeModal(); toast('Moved to trash', 'success'); switchView(currentView);
+  }
+
+  window.permanentlyDelete = async function(fileId) {
+    const file = allFiles.find(f => f.id === fileId);
+    if (!file) return;
+    await supabaseClient.storage.from('private-files').remove([file.storage_path]);
+    await supabaseClient.from('files').delete().eq('id', fileId);
+    toast('Permanently deleted', 'success'); switchView('trash');
+  }
+
+  async function renderTrash() {
+    allFiles = await loadFiles(true);
+    document.getElementById('main-content').innerHTML = `
+      <div class="topbar"><h2>Trash</h2></div>
+      ${allFiles.length === 0 ? `<div class="empty">${icons.trash}<h3>Trash is empty</h3><p>Deleted files appear here</p></div>` : `
+        <div class="files-list">
+          ${allFiles.map(f => `
+            <div class="files-list-row" style="grid-template-columns:1fr auto auto">
+              <div class="name"><span>${icons[fileCategory(f.mime_type)]}</span><span>${escapeHtml(f.name)}</span></div>
+              <div>${fmtSize(f.size_bytes)}</div>
+              <div class="row-actions">
+                <button class="action-btn" onclick="restoreFile('${f.id}')" title="Restore">↩️</button>
+                <button class="action-btn danger" onclick="confirmPermanentDelete('${f.id}')" title="Delete forever">${icons.trashSmall}</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    `;
+  }
+
+  window.restoreFile = async function(fileId) {
+    await supabaseClient.from('files').update({ is_trashed: false }).eq('id', fileId);
+    toast('Restored', 'success'); switchView('trash');
+  }
+
+  window.confirmPermanentDelete = function(fileId) {
+    const file = allFiles.find(f => f.id === fileId);
+    openModal(`<h3 style="color:var(--danger)">⚠️ Permanent deletion</h3><p style="font-size:13px;margin-bottom:14px">"${escapeHtml(file?.name || 'file')}" will be <b>permanently deleted</b>. This cannot be undone.</p><div class="actions"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-danger" onclick="permanentlyDelete('${fileId}')">Delete Forever</button></div>`);
+  }
+
+  async function renderStorage() {
+    const files = await loadFiles(false);
+    const used = files.reduce((s, f) => s + Number(f.size_bytes || 0), 0);
+    const avail = Math.max(0, STORAGE_QUOTA - used);
+    const pct = Math.min(100, (used / STORAGE_QUOTA) * 100);
+    const byCat = {};
+    files.forEach(f => { const c = fileCategory(f.mime_type); byCat[c] = (byCat[c] || 0) + Number(f.size_bytes || 0); });
+    const largest = [...files].sort((a, b) => b.size_bytes - a.size_bytes).slice(0, 5);
+
+    document.getElementById('main-content').innerHTML = `
+      <div class="topbar"><h2>Storage</h2></div>
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span><b>${fmtSize(used)}</b> of ${fmtSize(STORAGE_QUOTA)} used</span><span style="color:var(--gray-text)">${pct.toFixed(1)}%</span></div>
+        <div class="storage-bar" style="height:10px"><div class="storage-bar-fill" style="width:${pct}%"></div></div>
+        <p style="color:var(--gray-text);font-size:12px;margin-top:10px">${fmtSize(avail)} available</p>
+      </div>
+      <div class="card" style="margin-bottom:20px">
+        <h3 style="font-size:15px;margin-bottom:14px">By Category</h3>
+        ${Object.keys(byCat).length === 0 ? '<p style="color:var(--gray-text);font-size:13px">No data</p>' : Object.entries(byCat).map(([c, sz]) => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--gray-border);font-size:13px"><span>${icons[c] || '📎'} ${c}</span><span><b>${fmtSize(sz)}</b></span></div>`).join('')}
+      </div>
+      <div class="card">
+        <h3 style="font-size:15px;margin-bottom:14px">Largest Files</h3>
+        ${largest.length === 0 ? '<p style="color:var(--gray-text);font-size:13px">No files</p>' : largest.map(f => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--gray-border);font-size:13px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${escapeHtml(f.name)}</span><span><b>${fmtSize(f.size_bytes)}</b></span></div>`).join('')}
+      </div>
+    `;
+  }
+
+  window.openShareDialog = async function(fileId) {
+    const file = allFiles.find(f => f.id === fileId);
+    if (!file) return;
+    openModal(`<h3>Share "${escapeHtml(file.name)}"</h3><div class="field"><label>Expiration (optional)</label><input type="datetime-local" id="share-expires" /></div><div class="field"><label>Password (optional)</label><input type="text" id="share-password" placeholder="Leave empty for no password" /></div><div class="actions"><button class="btn-secondary" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="createShare('${fileId}')">Create Link</button></div><div id="share-result" style="margin-top:14px"></div>`);
+  }
+
+  window.createShare = async function(fileId) {
+    const expires = document.getElementById('share-expires').value;
+    const password = document.getElementById('share-password').value;
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, '0')).join('');
+    const tokenHash = await sha256(token);
+    const passwordHash = password ? await sha256(password + tokenHash) : null;
+
+    const { error } = await supabaseClient.from('share_links').insert({
+      file_id: fileId, owner_id: currentUser.id, token, password_hash: passwordHash, expires_at: expires ? new Date(expires).toISOString() : null,
+    });
+    if (error) return toast(error.message, 'error');
+
+    const link = `${location.origin}${location.pathname}#share=${token}`;
+    document.getElementById('share-result').innerHTML = `<div style="padding:10px;background:#f1f5f9;border-radius:8px;font-size:12px;word-break:break-all"><div style="margin-bottom:6px"><b>Share link:</b></div><div style="margin-bottom:8px">${link}</div>${password ? '<div style="color:var(--danger);margin-bottom:8px">Password required: ' + escapeHtml(password) + '</div>' : ''}<button class="btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${link}');toast('Copied','success')">Copy link</button></div>`;
+  }
+
+  async function renderShares() {
+    const { data: shares } = await supabaseClient.from('share_links').select('*, files(name, mime_type, size_bytes)').eq('owner_id', currentUser.id).order('created_at', { ascending: false });
+    document.getElementById('main-content').innerHTML = `
+      <div class="topbar"><h2>Active Shares</h2></div>
+      ${!shares || shares.length === 0 ? `<div class="empty">${icons.share}<h3>No share links</h3><p>Share a file from My Files</p></div>` : `
+        <div class="files-list">
+          ${shares.map(s => {
+            const expired = s.expires_at && new Date(s.expires_at) < new Date();
+            const revoked = s.revoked;
+            const status = revoked ? 'Revoked' : expired ? 'Expired' : 'Active';
+            const color = revoked || expired ? 'var(--danger)' : 'var(--success)';
+            return `<div class="files-list-row" style="grid-template-columns:1fr 100px 100px auto"><div class="name"><span>${icons[fileCategory(s.files?.mime_type)]}</span><span>${escapeHtml(s.files?.name || 'deleted')}</span></div><div style="color:${color};font-weight:500">${status}</div><div>${s.expires_at ? fmtDate(s.expires_at) : 'Never'}</div><div class="row-actions">${!revoked && !expired ? `<button class="action-btn danger" onclick="revokeShare('${s.id}')" title="Revoke">${icons.trashSmall}</button>` : ''}</div></div>`;
+          }).join('')}
+        </div>
+      `}
+    `;
+  }
+
+  window.revokeShare = async function(id) {
+    await supabaseClient.from('share_links').update({ revoked: true }).eq('id', id);
+    toast('Revoked', 'success'); renderShares();
+  }
+
+  async function renderSettings() {
+    const used = await totalUsed();
+    document.getElementById('main-content').innerHTML = `
+      <div class="topbar"><h2>Settings</h2></div>
+      <div class="card" style="margin-bottom:16px"><h3 style="font-size:15px;margin-bottom:8px">Account</h3><p style="font-size:13px;color:var(--gray-text)">Email: <b>${escapeHtml(currentUser.email)}</b></p></div>
+      <div class="card" style="margin-bottom:16px"><h3 style="font-size:15px;margin-bottom:12px">Change Password</h3><input type="password" id="new-password" placeholder="New password (min 6 chars)" style="margin-bottom:10px" /><button class="btn-primary" onclick="changePassword()">Update Password</button></div>
+      <div class="card" style="margin-bottom:16px"><h3 style="font-size:15px;margin-bottom:8px">Storage</h3><p style="font-size:13px;color:var(--gray-text)">Used: <b>${fmtSize(used)}</b> / ${fmtSize(STORAGE_QUOTA)}</p></div>
+      <div class="card"><h3 style="font-size:15px;margin-bottom:8px">Sign Out</h3><button class="btn-secondary" onclick="doLogout()">Sign out of this device</button></div>
+    `;
+  }
+
+  window.changePassword = async function() {
+    const pw = document.getElementById('new-password').value;
+    if (pw.length < 6) return toast('Password must be 6+ chars', 'error');
+    const { error } = await supabaseClient.auth.updateUser({ password: pw });
+    if (error) return toast(error.message, 'error');
+    toast('Password updated', 'success');
+  }
+
+  window.openModal = function(html) { document.getElementById('modal-content').innerHTML = html; document.getElementById('modal').classList.add('show'); }
+  window.closeModal = function() { document.getElementById('modal').classList.remove('show'); }
+  
+  async function sha256(str) { const buf = new TextEncoder().encode(str); const hash = await crypto.subtle.digest('SHA-256', buf); return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join(''); }
+
+  async function handleShareHash() {
+    const m = location.hash.match(/^#share=(.+)$/);
+    if (!m) return false;
+    const token = m[1];
+    const { data: share } = await supabaseClient.from('share_links').select('*, files(name, storage_path, mime_type, size_bytes)').eq('token', token).eq('revoked', false).single();
+    if (!share) { alert('Link not found or revoked'); return true; }
+    if (share.expires_at && new Date(share.expires_at) < new Date()) { alert('Link expired'); return true; }
+
+    let password = null;
+    if (share.password_hash) {
+      password = prompt('This file is password-protected. Enter password:');
+      if (!password) return true;
+      const tokenHash = await sha256(token);
+      const testHash = await sha256(password + tokenHash);
+      if (testHash !== share.password_hash) { alert('Invalid password'); return true; }
+    }
+
+    const { data, error } = await supabaseClient.storage.from('private-files').createSignedUrl(share.files.storage_path, 300);
+    if (error) { alert(error.message); return true; }
+    const a = document.createElement('a'); a.href = data.signedUrl; a.download = share.files.name; a.click();
+    return true;
+  }
+
+  (async () => {
+    if (await handleShareHash()) return;
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session?.user) { currentUser = session.user; enterApp(); }
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        currentUser = session.user;
+        if (!document.getElementById('app').classList.contains('active')) enterApp();
+      } else {
+        currentUser = null;
+        document.getElementById('app').classList.remove('active');
+        document.getElementById('auth').style.display = 'flex';
+      }
+    });
+  })();
+</script>
+</body>
+</html>
